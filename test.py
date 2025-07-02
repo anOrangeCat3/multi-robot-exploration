@@ -1,6 +1,5 @@
-from env import Env
-import numpy as np
-from utils import *
+from utils.env import Env
+from utils.utils import *
 import matplotlib.pyplot as plt
 
 done=False
@@ -15,7 +14,7 @@ for i in range(MAX_EPISODE_STEP):
     
     if done:
         break
-    plt.pause(1)
+    plt.pause(0.1)
 
 plt.ioff()  # 关闭交互模式
 plt.show()

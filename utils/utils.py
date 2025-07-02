@@ -1,9 +1,8 @@
 import numpy as np
 from sklearn.cluster import KMeans
 import heapq
-from typing import List, Tuple, Dict, Optional
 
-from parameter import *
+from utils.parameter import *
 
 class MapInfo:
     def __init__(self, map, map_origin_x, map_origin_y, cell_size):
@@ -90,6 +89,7 @@ def get_frontier_in_map(map_info:MapInfo)->set[tuple[float,float]]:
         frontier_coords = frontier_down_sample(frontier_coords)
     else:
         frontier_coords = set(map(tuple, frontier_coords))
+
     return frontier_coords
 
 
@@ -128,8 +128,8 @@ def get_coords_from_cell_position(cell_position, map_info):
     else:
         return coords
     
-def cluster_frontiers(frontier_coords:set[tuple[np.ndarray,np.ndarray]], 
-                      n_clusters=5)->np.ndarray:
+def cluster_frontiers(frontier_coords: set[tuple[np.ndarray, np.ndarray]], 
+                      n_clusters=5) -> np.ndarray:
     """
     将前沿点聚类并返回聚类中心
     Args:
@@ -140,22 +140,57 @@ def cluster_frontiers(frontier_coords:set[tuple[np.ndarray,np.ndarray]],
     """
     # 转换数据格式
     if len(frontier_coords) == 0:
-        return np.array([])
+        # print("警告: 没有前沿点进行聚类")
+        return np.array([]).reshape(0, 2)  # 返回正确形状的空数组
     
-    frontier_array = np.array(list(frontier_coords))
+    frontier_list = list(frontier_coords)
+    original_count = len(frontier_list)
     
-    # 如果前沿点数量少于聚类数，直接返回所有点
-    if len(frontier_array) <= n_clusters:
+    # print(f"原始前沿点数量: {original_count}")
+    # 如果前沿点数量少于聚类数，复制前沿点
+    if len(frontier_list) < n_clusters:
+        print(f"前沿点数量({len(frontier_list)}) < 聚类数({n_clusters})，开始复制前沿点...")
+        
+        needed_points = n_clusters - len(frontier_list)
+        
+        # 复制现有前沿点，添加小的随机偏移避免完全重复
+        np.random.seed(42)  # 确保可重复性
+        
+        for i in range(needed_points):
+            # 循环选择要复制的点
+            base_point = frontier_list[i % len(frontier_list)]
+            
+            # 添加小的随机偏移
+            noise_x = np.random.uniform(-0.3, 0.3)  # ±0.3米的随机偏移
+            noise_y = np.random.uniform(-0.3, 0.3)
+            
+            new_point = (base_point[0] + noise_x, base_point[1] + noise_y)
+            frontier_list.append(new_point)
+        
+        # print(f"复制后前沿点数量: {len(frontier_list)}")
+    
+    # 转换为NumPy数组
+    frontier_array = np.array(frontier_list)
+    
+    # 如果前沿点数量等于聚类数，直接返回所有点
+    if len(frontier_array) == n_clusters:
+        # print(f"前沿点数量等于聚类数，直接返回所有点")
         return frontier_array
     
-    # K-means 聚类
-    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    kmeans.fit(frontier_array)
-    
-    # 返回聚类中心
-    cluster_centers = kmeans.cluster_centers_
-
-    return cluster_centers
+    # 进行K-means聚类
+    try:
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+        kmeans.fit(frontier_array)
+        
+        cluster_centers = kmeans.cluster_centers_
+        # print(f"聚类完成: {len(frontier_array)} 个前沿点 → {len(cluster_centers)} 个聚类中心")
+        
+        return cluster_centers
+        
+    except Exception as e:
+        print(f"聚类失败: {e}")
+        # 如果聚类失败，返回前n_clusters个点
+        return frontier_array[:n_clusters]
 
 def A_star(start:np.ndarray, 
            goal:np.ndarray, 
@@ -170,7 +205,6 @@ def A_star(start:np.ndarray,
     Returns:
         path: list, 路径点列表 [np.array([x1,y1]), np.array([x2,y2]), ...] 如果无路径返回空列表
     '''
-    
     # 确保输入是正确的numpy数组格式
     start = np.array(start).flatten()
     goal = np.array(goal).flatten()
@@ -336,7 +370,6 @@ def A_star(start:np.ndarray,
                 g_score[neighbor_tuple] = tentative_g
                 f_score = tentative_g + heuristic(neighbor_cell, goal_cell)
                 heapq.heappush(open_set, (f_score, neighbor_tuple))
-    
     # 无法找到路径
     return []
 
@@ -361,5 +394,141 @@ def get_path_length(path:list[np.ndarray])->float:
     
     return total_length
 
+def is_position_accessible(self, position):
+        """
+        检查位置是否可通行
+        Args:
+            position: np.array 或 tuple, 位置坐标 (机器人坐标系)
+        Returns:
+            bool: True如果可通行，False如果不可通行
+        """
+        try:
+            # 确保输入是numpy数组
+            if isinstance(position, (list, tuple)):
+                position = np.array(position)
+            
+            # 转换为网格坐标
+            cell_position_raw = get_cell_position_from_coords(
+                position.reshape(1, -1), self.belief_info
+            )
+            
+            # 处理可能的标量返回值
+            if isinstance(cell_position_raw, np.ndarray):
+                if cell_position_raw.ndim == 0:
+                    # 0维数组，无法索引
+                    # print(f"位置 {position} 转换结果是标量: {cell_position_raw}")
+                    return False
+                elif cell_position_raw.ndim == 1:
+                    cell_position = cell_position_raw
+                else:
+                    cell_position = cell_position_raw[0]
+            else:
+                cell_position = np.array(cell_position_raw)
+            
+            # 确保是1维数组且有2个元素
+            cell_position = np.array(cell_position).flatten()
+            if len(cell_position) != 2:
+                # print(f"位置 {position} 转换结果格式错误: {cell_position}")
+                return False
+            
+            # 检查是否在地图范围内
+            map_height, map_width = self.robot_belief.shape
+            if not (0 <= cell_position[0] < map_width and 0 <= cell_position[1] < map_height):
+                return False
+            
+            # 检查是否是自由空间
+            cell_value = self.robot_belief[cell_position[1], cell_position[0]]
+            return cell_value == FREE
+            
+        except Exception as e:
+            # print(f"位置 {position} 不在可通行区域: {e}")
+            return False
+        
+def find_nearest_accessible_position_spiral(center_coords, map_info:MapInfo, max_search_radius=3.0):
+        """
+        使用螺旋搜索找到距离指定中心点最近的可通行位置
+        Args:
+            center_coords: np.array 聚类中心坐标
+            max_search_radius: float, 最大搜索半径 (米)
+        Returns:
+            np.array: 最近的可通行位置坐标，如果没有则返回None
+        """
+        # 确保输入是numpy数组
+        if isinstance(center_coords, (list, tuple)):
+            center_coords = np.array(center_coords)
+        
+        # 转换中心点为网格坐标
+        try:
+            center_cell_raw = get_cell_position_from_coords(
+                center_coords.reshape(1, -1), map_info
+            )
+            
+            # 处理可能的标量返回值
+            if isinstance(center_cell_raw, np.ndarray):
+                if center_cell_raw.ndim == 0:
+                    print(f"中心点 {center_coords} 转换结果是标量")
+                    return None
+                elif center_cell_raw.ndim == 1:
+                    center_cell = center_cell_raw
+                else:
+                    center_cell = center_cell_raw[0]
+            else:
+                center_cell = np.array(center_cell_raw)
+            
+            # 确保是正确格式
+            center_cell = np.array(center_cell).flatten()
+            if len(center_cell) != 2:
+                print(f"中心点 {center_coords} 转换格式错误: {center_cell}")
+                return None
+            
+        except Exception as e:
+            print(f"中心点坐标转换失败: {e}")
+            return None
+        
+        # 检查是否在地图范围内
+        map_height, map_width = map_info.map.shape
+        if not (0 <= center_cell[0] < map_width and 0 <= center_cell[1] < map_height):
+            print(f"中心点超出地图范围: {center_cell}, 地图大小: {map_width}x{map_height}")
+            return None
+        
+        # 最大搜索半径对应的网格数
+        max_radius_cells = int(max_search_radius / map_info.cell_size) + 1
+        
+        # 螺旋搜索：从中心开始，逐渐扩大搜索半径
+        for radius in range(max_radius_cells + 1):
+            # 在当前半径的所有位置中搜索
+            for dx in range(-radius, radius + 1):
+                for dy in range(-radius, radius + 1):
+                    # 只搜索当前半径边界上的点（避免重复搜索内部点）
+                    if abs(dx) != radius and abs(dy) != radius and radius > 0:
+                        continue
+                    
+                    candidate_cell = np.array([center_cell[0] + dx, center_cell[1] + dy])
+                    
+                    # 检查边界
+                    if not (0 <= candidate_cell[0] < map_width and 0 <= candidate_cell[1] < map_height):
+                        continue
+                    
+                    # 检查是否可通行
+                    if map_info.map[candidate_cell[1], candidate_cell[0]] == FREE:
+                        # 转换回实际坐标
+                        candidate_coords = get_coords_from_cell_position(
+                            candidate_cell.reshape(1, -1), map_info
+                        )
+                        
+                        # 处理返回值
+                        if isinstance(candidate_coords, np.ndarray):
+                            if candidate_coords.ndim == 1:
+                                result_coords = candidate_coords
+                            else:
+                                result_coords = candidate_coords.flatten()
+                        else:
+                            result_coords = np.array(candidate_coords)
+                        
+                        # 检查实际距离是否在搜索半径内
+                        distance = np.linalg.norm(center_coords - result_coords)
+                        if distance <= max_search_radius:
+                            return result_coords
+        return None
 
     
