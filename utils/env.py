@@ -179,7 +179,7 @@ class Env:
                     path_array = np.array(path)
                     path_x = (path_array[:, 0] - self.belief_origin_x) / self.cell_size
                     path_y = (path_array[:, 1] - self.belief_origin_y) / self.cell_size
-                    plt.plot(path_x, path_y, 'b-', linewidth=1, alpha=0.3, zorder=3)
+                    plt.plot(path_x, path_y, 'b-', linewidth=2, alpha=0.5, zorder=3)
             
             # 再画当前路径（突出显示）
             if len(self.trajectory) > 0:
@@ -188,7 +188,7 @@ class Env:
                     path_array = np.array(current_path)
                     path_x = (path_array[:, 0] - self.belief_origin_x) / self.cell_size
                     path_y = (path_array[:, 1] - self.belief_origin_y) / self.cell_size
-                    plt.plot(path_x, path_y, 'g-', linewidth=3, alpha=0.8, 
+                    plt.plot(path_x, path_y, 'r-', linewidth=2, alpha=0.5, 
                             label='Current Path', zorder=5)
 
         # 将前沿点(机器人坐标系)转换为地图坐标系
