@@ -5,11 +5,11 @@ import heapq
 from utils.parameter import *
 
 class MapInfo:
-    def __init__(self, map, map_origin_x, map_origin_y, cell_size):
+    def __init__(self, map, map_origin_x, map_origin_y):
         self.map = map
         self.map_origin_x = map_origin_x
         self.map_origin_y = map_origin_y
-        self.cell_size = cell_size
+        self.pixel_size = PIXEL_SIZE
 
     def update_map_info(self, map, map_origin_x, map_origin_y):
         self.map = map
@@ -17,39 +17,39 @@ class MapInfo:
         self.map_origin_y = map_origin_y
 
 
-def get_cell_position_from_coords(coords, map_info, check_negative=True):
+def get_position_in_map_from_coords(coords:np.ndarray, map_info:MapInfo, check_negative=True):
     '''
-    机器人坐标 -> 地图坐标
+    机器人坐标系 -> 地图坐标系
     '''
-    single_cell = False
+    single_position = False
     if coords.flatten().shape[0] == 2:
-        single_cell = True
+        single_position = True
 
     coords = coords.reshape(-1, 2)
     coords_x = coords[:, 0]
     coords_y = coords[:, 1]
-    cell_x = ((coords_x - map_info.map_origin_x) / map_info.cell_size)
-    cell_y = ((coords_y - map_info.map_origin_y) / map_info.cell_size)
+    position_in_map_x = ((coords_x - map_info.map_origin_x) / map_info.pixel_size)
+    position_in_map_y = ((coords_y - map_info.map_origin_y) / map_info.pixel_size)
 
-    cell_position = np.around(np.stack((cell_x, cell_y), axis=-1)).astype(int)
+    position_in_map = np.around(np.stack((position_in_map_x, position_in_map_y), axis=-1)).astype(int)
 
     if check_negative:
-        assert sum(cell_position.flatten() >= 0) == cell_position.flatten().shape[0], print(cell_position, coords, map_info.map_origin_x, map_info.map_origin_y)
-    if single_cell:
-        return cell_position[0]
+        assert sum(position_in_map.flatten() >= 0) == position_in_map.flatten().shape[0], print(position_in_map, coords, map_info.map_origin_x, map_info.map_origin_y)
+    if single_position:
+        return position_in_map[0]
     else:
-        return cell_position
+        return position_in_map
 
 
-def get_coords_from_cell_position(cell_position, map_info):
+def get_coords_from_position_in_map(position_in_map:np.ndarray, map_info:MapInfo):
     '''
-    地图坐标 -> 机器人坐标
+    地图坐标系 -> 机器人坐标系
     '''
-    cell_position = cell_position.reshape(-1, 2)
-    cell_x = cell_position[:, 0]
-    cell_y = cell_position[:, 1]
-    coords_x = cell_x * map_info.cell_size + map_info.map_origin_x
-    coords_y = cell_y * map_info.cell_size + map_info.map_origin_y
+    position_in_map = position_in_map.reshape(-1, 2)
+    position_in_map_x = position_in_map[:, 0]
+    position_in_map_y = position_in_map[:, 1]
+    coords_x = position_in_map_x * map_info.pixel_size + map_info.map_origin_x
+    coords_y = position_in_map_y * map_info.pixel_size + map_info.map_origin_y
     coords = np.stack((coords_x, coords_y), axis=-1)
     coords = np.around(coords, 1)
     if coords.shape[0] == 1:
@@ -67,7 +67,7 @@ def get_frontier_in_map(map_info:MapInfo)->set[tuple[float,float]]:
     x_len = map_info.map.shape[1]
     y_len = map_info.map.shape[0]
     unknown = (map_info.map == UNKNOWN) * 1
-    unknown = np.lib.pad(unknown, ((1, 1), (1, 1)), 'constant', constant_values=0)
+    unknown = np.pad(unknown, ((1, 1), (1, 1)), 'constant', constant_values=0)
     unknown_neighbor = unknown[2:][:, 1:x_len + 1] + unknown[:y_len][:, 1:x_len + 1] + unknown[1:y_len + 1][:, 2:] \
                        + unknown[1:y_len + 1][:, :x_len] + unknown[:y_len][:, 2:] + unknown[2:][:, :x_len] + \
                        unknown[2:][:, 2:] + unknown[:y_len][:, :x_len]
@@ -83,8 +83,8 @@ def get_frontier_in_map(map_info:MapInfo)->set[tuple[float,float]]:
     cells = np.vstack([t1.T.ravel(), t2.T.ravel()]).T
     frontier_cell = cells[frontier_cell_indices]
 
-    frontier_coords = get_coords_from_cell_position(frontier_cell, map_info).reshape(-1, 2)
-    if frontier_cell.shape[0] > 0 and FRONTIER_CELL_SIZE != CELL_SIZE:
+    frontier_coords = get_coords_from_position_in_map(frontier_cell, map_info).reshape(-1, 2)
+    if frontier_cell.shape[0] > 0 and FRONTIER_CELL_SIZE != PIXEL_SIZE:
         frontier_coords = frontier_coords.reshape(-1 ,2)
         frontier_coords = frontier_down_sample(frontier_coords)
     else:
@@ -110,23 +110,9 @@ def frontier_down_sample(data, voxel_size=FRONTIER_CELL_SIZE):
             if np.linalg.norm(point - np.array(voxel_index) * voxel_size) < np.linalg.norm(
                     current_point - np.array(voxel_index) * voxel_size):
                 voxel_dict[voxel_index] = point
-
     downsampled_data = set(map(tuple, voxel_dict.values()))
     return downsampled_data
 
-
-def get_coords_from_cell_position(cell_position, map_info):
-    cell_position = cell_position.reshape(-1, 2)
-    cell_x = cell_position[:, 0]
-    cell_y = cell_position[:, 1]
-    coords_x = cell_x * map_info.cell_size + map_info.map_origin_x
-    coords_y = cell_y * map_info.cell_size + map_info.map_origin_y
-    coords = np.stack((coords_x, coords_y), axis=-1)
-    coords = np.around(coords, 1)
-    if coords.shape[0] == 1:
-        return coords[0]
-    else:
-        return coords
     
 def cluster_frontiers(frontier_coords: set[tuple[np.ndarray, np.ndarray]], 
                       n_clusters=5) -> np.ndarray:
@@ -149,29 +135,21 @@ def cluster_frontiers(frontier_coords: set[tuple[np.ndarray, np.ndarray]],
     # print(f"原始前沿点数量: {original_count}")
     # 如果前沿点数量少于聚类数，复制前沿点
     if len(frontier_list) < n_clusters:
-        print(f"前沿点数量({len(frontier_list)}) < 聚类数({n_clusters})，开始复制前沿点...")
-        
+        # print(f"前沿点数量({len(frontier_list)}) < 聚类数({n_clusters})，开始复制前沿点...")
         needed_points = n_clusters - len(frontier_list)
-        
         # 复制现有前沿点，添加小的随机偏移避免完全重复
         np.random.seed(42)  # 确保可重复性
-        
         for i in range(needed_points):
             # 循环选择要复制的点
             base_point = frontier_list[i % len(frontier_list)]
-            
             # 添加小的随机偏移
-            noise_x = np.random.uniform(-0.3, 0.3)  # ±0.3米的随机偏移
-            noise_y = np.random.uniform(-0.3, 0.3)
-            
+            noise_x = np.random.uniform(-0.1, 0.1)  # ±0.1米的随机偏移
+            noise_y = np.random.uniform(-0.1, 0.1)
             new_point = (base_point[0] + noise_x, base_point[1] + noise_y)
             frontier_list.append(new_point)
-        
         # print(f"复制后前沿点数量: {len(frontier_list)}")
-    
     # 转换为NumPy数组
     frontier_array = np.array(frontier_list)
-    
     # 如果前沿点数量等于聚类数，直接返回所有点
     if len(frontier_array) == n_clusters:
         # print(f"前沿点数量等于聚类数，直接返回所有点")
@@ -214,37 +192,37 @@ def A_star(start:np.ndarray,
     goal_coords = goal.reshape(1, -1)
     
     try:
-        start_cell_raw = get_cell_position_from_coords(start_coords, map_info)
-        goal_cell_raw = get_cell_position_from_coords(goal_coords, map_info)
+        start_position_in_map_raw = get_position_in_map_from_coords(start_coords, map_info)
+        goal_position_in_map_raw = get_position_in_map_from_coords(goal_coords, map_info)
         
         # 处理可能的标量返回值
-        if isinstance(start_cell_raw, np.ndarray):
-            if start_cell_raw.ndim == 0:
+        if isinstance(start_position_in_map_raw, np.ndarray):
+            if start_position_in_map_raw.ndim == 0:
                 # 如果是0维数组（标量），需要特殊处理
-                start_cell = np.array([start_cell_raw.item(), 0])  # 这种情况通常不会发生
-            elif start_cell_raw.ndim == 1:
-                start_cell = start_cell_raw
+                start_position_in_map = np.array([start_position_in_map_raw.item(), 0])  # 这种情况通常不会发生
+            elif start_position_in_map_raw.ndim == 1:
+                start_position_in_map = start_position_in_map_raw
             else:
-                start_cell = start_cell_raw[0]
+                start_position_in_map = start_position_in_map_raw[0]
         else:
-            start_cell = np.array(start_cell_raw)
+            start_position_in_map = np.array(start_position_in_map_raw)
             
-        if isinstance(goal_cell_raw, np.ndarray):
-            if goal_cell_raw.ndim == 0:
-                goal_cell = np.array([goal_cell_raw.item(), 0])
-            elif goal_cell_raw.ndim == 1:
-                goal_cell = goal_cell_raw
+        if isinstance(goal_position_in_map_raw, np.ndarray):
+            if goal_position_in_map_raw.ndim == 0:
+                goal_position_in_map = np.array([goal_position_in_map_raw.item(), 0])
+            elif goal_position_in_map_raw.ndim == 1:
+                goal_position_in_map = goal_position_in_map_raw
             else:
-                goal_cell = goal_cell_raw[0]
+                goal_position_in_map = goal_position_in_map_raw[0]
         else:
-            goal_cell = np.array(goal_cell_raw)
+            goal_position_in_map = np.array(goal_position_in_map_raw)
             
         # 确保 start_cell 和 goal_cell 是1D数组且包含2个元素
-        start_cell = np.array(start_cell).flatten()
-        goal_cell = np.array(goal_cell).flatten()
+        start_position_in_map = np.array(start_position_in_map).flatten()
+        goal_position_in_map = np.array(goal_position_in_map).flatten()
         
-        if len(start_cell) != 2 or len(goal_cell) != 2:
-            print(f"坐标转换错误: start_cell={start_cell}, goal_cell={goal_cell}")
+        if len(start_position_in_map) != 2 or len(goal_position_in_map) != 2:
+            print(f"坐标转换错误: start_position_in_map={start_position_in_map}, goal_position_in_map={goal_position_in_map}")
             return []
             
     except Exception as e:
@@ -254,24 +232,24 @@ def A_star(start:np.ndarray,
     
     # 检查坐标是否在地图范围内
     map_height, map_width = map_info.map.shape
-    if (not (0 <= start_cell[0] < map_width and 0 <= start_cell[1] < map_height) or
-        not (0 <= goal_cell[0] < map_width and 0 <= goal_cell[1] < map_height)):
-        print(f"坐标超出地图范围: start_cell={start_cell}, goal_cell={goal_cell}, map_size=({map_width}, {map_height})")
+    if (not (0 <= start_position_in_map[0] < map_width and 0 <= start_position_in_map[1] < map_height) or
+        not (0 <= goal_position_in_map[0] < map_width and 0 <= goal_position_in_map[1] < map_height)):
+        print(f"坐标超出地图范围: start_position_in_map={start_position_in_map}, goal_position_in_map={goal_position_in_map}, map_size=({map_width}, {map_height})")
         return []
     
     # 检查起点和终点是否可通行
-    if (map_info.map[start_cell[1], start_cell[0]] != FREE or 
-        map_info.map[goal_cell[1], goal_cell[0]] != FREE):
-        print(f"起点或终点不可通行: start_value={map_info.map[start_cell[1], start_cell[0]]}, goal_value={map_info.map[goal_cell[1], goal_cell[0]]}")
+    if (map_info.map[start_position_in_map[1], start_position_in_map[0]] != FREE or 
+        map_info.map[goal_position_in_map[1], goal_position_in_map[0]] != FREE):
+        print(f"起点或终点不可通行: start_value={map_info.map[start_position_in_map[1], start_position_in_map[0]]}, goal_value={map_info.map[goal_position_in_map[1], goal_position_in_map[0]]}")
         return []
     
-    def heuristic(cell1, cell2):
+    def heuristic(position_in_map1, position_in_map2):
         """启发式函数 - 欧几里得距离"""
-        return np.sqrt((cell1[0] - cell2[0])**2 + (cell1[1] - cell2[1])**2)
+        return np.sqrt((position_in_map1[0] - position_in_map2[0])**2 + (position_in_map1[1] - position_in_map2[1])**2)
     
-    def get_neighbors(cell):
+    def get_neighbors(position_in_map):
         """获取邻居节点"""
-        x, y = cell
+        x, y = position_in_map
         neighbors = []
         # 8方向移动
         directions = [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]
@@ -302,9 +280,9 @@ def A_star(start:np.ndarray,
         
         # 转换网格坐标回机器人坐标系
         path = []
-        for cell in path_cells:
-            cell_coords = np.array(cell).reshape(1, -1)
-            real_coords = get_coords_from_cell_position(cell_coords, map_info)
+        for position_in_map in path_cells:
+            position_in_map_coords = np.array(position_in_map).reshape(1, -1)
+            real_coords = get_coords_from_position_in_map(position_in_map_coords, map_info)
             
             # 处理get_coords_from_cell_position的返回值
             if isinstance(real_coords, np.ndarray):
@@ -318,15 +296,15 @@ def A_star(start:np.ndarray,
         return path
     
     # A*算法主体
-    start_tuple = tuple(start_cell.astype(int))
-    goal_tuple = tuple(goal_cell.astype(int))
+    start_tuple = tuple(start_position_in_map.astype(int))
+    goal_tuple = tuple(goal_position_in_map.astype(int))
     
     # 如果起点就是终点
     if start_tuple == goal_tuple:
         return [start, goal]
     
     # 优先队列: (f_score, current_cell)
-    open_set = [(heuristic(start_cell, goal_cell), start_tuple)]
+    open_set = [(heuristic(start_position_in_map, goal_position_in_map), start_tuple)]
     
     # 记录已访问的节点
     closed_set = set()
@@ -339,36 +317,36 @@ def A_star(start:np.ndarray,
     
     while open_set:
         # 取出f值最小的节点
-        current_f, current_cell = heapq.heappop(open_set)
+        current_f, current_position_in_map = heapq.heappop(open_set)
         
         # 如果已经访问过这个节点，跳过
-        if current_cell in closed_set:
+        if current_position_in_map in closed_set:
             continue
             
         # 标记为已访问
-        closed_set.add(current_cell)
+        closed_set.add(current_position_in_map)
         
         # 如果到达目标
-        if current_cell == goal_tuple:
+        if current_position_in_map == goal_tuple:
             # 重构并返回路径
-            return reconstruct_path(came_from, current_cell)
+            return reconstruct_path(came_from, current_position_in_map)
         
         # 探索邻居节点
-        for neighbor_cell, move_cost in get_neighbors(current_cell):
-            neighbor_tuple = tuple(neighbor_cell)
+        for neighbor_position_in_map, move_cost in get_neighbors(current_position_in_map):
+            neighbor_tuple = tuple(neighbor_position_in_map)
             
             # 如果已经访问过，跳过
             if neighbor_tuple in closed_set:
                 continue
             
             # 计算通过当前节点到邻居的距离
-            tentative_g = g_score[current_cell] + move_cost
+            tentative_g = g_score[current_position_in_map] + move_cost
             
             # 如果找到更短的路径，或者是第一次访问这个邻居
             if neighbor_tuple not in g_score or tentative_g < g_score[neighbor_tuple]:
-                came_from[neighbor_tuple] = current_cell
+                came_from[neighbor_tuple] = current_position_in_map
                 g_score[neighbor_tuple] = tentative_g
-                f_score = tentative_g + heuristic(neighbor_cell, goal_cell)
+                f_score = tentative_g + heuristic(neighbor_position_in_map, goal_position_in_map)
                 heapq.heappush(open_set, (f_score, neighbor_tuple))
     # 无法找到路径
     return []
@@ -394,7 +372,7 @@ def get_path_length(path:list[np.ndarray])->float:
     
     return total_length
 
-def is_position_accessible(self, position):
+def is_position_accessible(position, map_info:MapInfo):
         """
         检查位置是否可通行
         Args:
@@ -408,37 +386,37 @@ def is_position_accessible(self, position):
                 position = np.array(position)
             
             # 转换为网格坐标
-            cell_position_raw = get_cell_position_from_coords(
-                position.reshape(1, -1), self.belief_info
+            position_in_map_raw = get_position_in_map_from_coords(
+                position.reshape(1, -1), map_info
             )
             
             # 处理可能的标量返回值
-            if isinstance(cell_position_raw, np.ndarray):
-                if cell_position_raw.ndim == 0:
+            if isinstance(position_in_map_raw, np.ndarray):
+                if position_in_map_raw.ndim == 0:
                     # 0维数组，无法索引
                     # print(f"位置 {position} 转换结果是标量: {cell_position_raw}")
                     return False
-                elif cell_position_raw.ndim == 1:
-                    cell_position = cell_position_raw
+                elif position_in_map_raw.ndim == 1:
+                    position_in_map = position_in_map_raw
                 else:
-                    cell_position = cell_position_raw[0]
+                    position_in_map = position_in_map_raw[0]
             else:
-                cell_position = np.array(cell_position_raw)
+                position_in_map = np.array(position_in_map_raw)
             
             # 确保是1维数组且有2个元素
-            cell_position = np.array(cell_position).flatten()
-            if len(cell_position) != 2:
-                # print(f"位置 {position} 转换结果格式错误: {cell_position}")
+            position_in_map = np.array(position_in_map).flatten()
+            if len(position_in_map) != 2:
+                # print(f"位置 {position} 转换结果格式错误: {position_in_map}")
                 return False
             
             # 检查是否在地图范围内
-            map_height, map_width = self.robot_belief.shape
-            if not (0 <= cell_position[0] < map_width and 0 <= cell_position[1] < map_height):
+            map_height, map_width = map_info.map.shape
+            if not (0 <= position_in_map[0] < map_width and 0 <= position_in_map[1] < map_height):
                 return False
             
             # 检查是否是自由空间
-            cell_value = self.robot_belief[cell_position[1], cell_position[0]]
-            return cell_value == FREE
+            position_value = map_info.map[position_in_map[1], position_in_map[0]]
+            return position_value == FREE
             
         except Exception as e:
             # print(f"位置 {position} 不在可通行区域: {e}")
@@ -459,26 +437,26 @@ def find_nearest_accessible_position_spiral(center_coords, map_info:MapInfo, max
         
         # 转换中心点为网格坐标
         try:
-            center_cell_raw = get_cell_position_from_coords(
+            center_position_in_map_raw = get_position_in_map_from_coords(
                 center_coords.reshape(1, -1), map_info
             )
             
             # 处理可能的标量返回值
-            if isinstance(center_cell_raw, np.ndarray):
-                if center_cell_raw.ndim == 0:
+            if isinstance(center_position_in_map_raw, np.ndarray):
+                if center_position_in_map_raw.ndim == 0:
                     print(f"中心点 {center_coords} 转换结果是标量")
                     return None
-                elif center_cell_raw.ndim == 1:
-                    center_cell = center_cell_raw
+                elif center_position_in_map_raw.ndim == 1:
+                    center_position_in_map = center_position_in_map_raw
                 else:
-                    center_cell = center_cell_raw[0]
+                    center_position_in_map = center_position_in_map_raw[0]
             else:
-                center_cell = np.array(center_cell_raw)
+                center_position_in_map = np.array(center_position_in_map_raw)
             
             # 确保是正确格式
-            center_cell = np.array(center_cell).flatten()
-            if len(center_cell) != 2:
-                print(f"中心点 {center_coords} 转换格式错误: {center_cell}")
+            center_position_in_map = np.array(center_position_in_map).flatten()
+            if len(center_position_in_map) != 2:
+                print(f"中心点 {center_coords} 转换格式错误: {center_position_in_map}")
                 return None
             
         except Exception as e:
@@ -487,12 +465,12 @@ def find_nearest_accessible_position_spiral(center_coords, map_info:MapInfo, max
         
         # 检查是否在地图范围内
         map_height, map_width = map_info.map.shape
-        if not (0 <= center_cell[0] < map_width and 0 <= center_cell[1] < map_height):
-            print(f"中心点超出地图范围: {center_cell}, 地图大小: {map_width}x{map_height}")
+        if not (0 <= center_position_in_map[0] < map_width and 0 <= center_position_in_map[1] < map_height):
+            print(f"中心点超出地图范围: {center_position_in_map}, 地图大小: {map_width}x{map_height}")
             return None
         
         # 最大搜索半径对应的网格数
-        max_radius_cells = int(max_search_radius / map_info.cell_size) + 1
+        max_radius_cells = int(max_search_radius / map_info.pixel_size) + 1
         
         # 螺旋搜索：从中心开始，逐渐扩大搜索半径
         for radius in range(max_radius_cells + 1):
@@ -503,17 +481,17 @@ def find_nearest_accessible_position_spiral(center_coords, map_info:MapInfo, max
                     if abs(dx) != radius and abs(dy) != radius and radius > 0:
                         continue
                     
-                    candidate_cell = np.array([center_cell[0] + dx, center_cell[1] + dy])
+                    candidate_position_in_map = np.array([center_position_in_map[0] + dx, center_position_in_map[1] + dy])
                     
                     # 检查边界
-                    if not (0 <= candidate_cell[0] < map_width and 0 <= candidate_cell[1] < map_height):
+                    if not (0 <= candidate_position_in_map[0] < map_width and 0 <= candidate_position_in_map[1] < map_height):
                         continue
                     
                     # 检查是否可通行
-                    if map_info.map[candidate_cell[1], candidate_cell[0]] == FREE:
+                    if map_info.map[candidate_position_in_map[1], candidate_position_in_map[0]] == FREE:
                         # 转换回实际坐标
-                        candidate_coords = get_coords_from_cell_position(
-                            candidate_cell.reshape(1, -1), map_info
+                        candidate_coords = get_coords_from_position_in_map(
+                            candidate_position_in_map.reshape(1, -1), map_info
                         )
                         
                         # 处理返回值

@@ -1,1 +1,1 @@
-# Frotier Based Robot Exploration by Greedy Strategy
+# Multi-agent Exploration
